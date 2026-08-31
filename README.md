@@ -1,0 +1,347 @@
+# imake
+
+An interactive `make` companion, two tools in one binary:
+
+![imake demo](demo/imake.gif)
+
+- **`imake .`** — a TUI that lists your Makefile targets; pick one and run it.
+- **`imake`** / **`imake <group>`** — a k9s-inspired task runner: define named command groups in `imake.yml`, pick from a live groups table (or name one), run tasks concurrently, watch their logs side by side, and click or press Enter to drop into any task's shell. `esc`/`g` returns to the table with the group's tasks **still running** — open as many groups as you like, the table shows each one's task/running/ok/failed counts live, k9s-namespaces style.
+
+## Install
+
+Quick install — one script for macOS, Linux, and Windows (Git Bash),
+no Go needed:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/gshireesh/imake_public/main/install.sh | sh
+```
+
+On Windows it installs to `%LOCALAPPDATA%\Programs\imake` and adds it
+to your user PATH; native PowerShell users can use instead:
+
+```powershell
+irm https://raw.githubusercontent.com/gshireesh/imake_public/main/install.ps1 | iex
+```
+
+Windows tasks run through `cmd.exe` on ConPTY. Prebuilt binaries cover
+macOS, Linux and Windows on amd64 and arm64.
+
+imake's source lives in a private repository. This repo carries what
+you need to use it: the installers, the agent skill, and every release
+binary.
+
+Once installed, `imake -u` (or `--update`) self-updates to the latest
+release, `imake -v` prints the version, and `imake -h` shows usage.
+The TUI also checks for a new release in the background (at most once
+a day) and downloads it quietly — the header shows a restart hint and
+the next launch runs the new version. Set `IMAKE_NO_AUTOUPDATE=1` to
+disable.
+
+## Task runner
+
+Create an `imake.yml` (or `imake.yaml`) describing named command groups. A task is either a plain command string or an object with lifecycle hooks:
+
+```yaml
+dev:
+  ui: {command: pnpm dev, dir: discover}   # dir: instead of cd-chains
+  backend:
+    command: go run cmd/main.go
+    dir: backend
+    env: {PORT: "8080"}         # extra environment for every phase
+    before: echo "starting backend..."
+    timeout: 10s                # durations (10s, 500ms, 2m) or bare ms
+    on_timeout: echo "timed out"
+    on_error: echo "failed"
+    on_success: echo "ok"
+    after: echo "done"
+    restart_policy: on-failure  # always | on-failure | never (default)
+    keep_shell: true            # drop into an interactive shell after the command
+  release:
+    command:                    # a list runs as one && chain
+      - go vet ./...
+      - go build ./...
+    prompt: publishes to prod!  # are-you-sure dialog; true or a message
+```
+
+Then run the group:
+
+```sh
+imake dev
+```
+
+Each task runs on its own pty behind a real terminal emulator
+([midterm](https://github.com/vito/midterm)), so full-screen child TUIs —
+turbo, vite, vim, htop, fancy shell prompts — render correctly instead of
+turning into escape-code soup. The left panel lists tasks with live status
+(`●` running, `❯` interactive shell, `✓` ok, `✗` failed, `■` stopped); the
+right panel shows the selected task's live screen. Scrolling up switches the
+pane to a line-based history buffer (copy mode); `b` or scrolling to the
+bottom returns to the live screen.
+
+### Keys & mouse
+
+| Input | Action |
+| --- | --- |
+| `↑`/`↓`, `j`/`k`, wheel over sidebar | move selection |
+| `←`/`h`, `→`/`l` | collapse / expand the group under the cursor |
+| `[`, `]` | fold / unfold every section at once |
+| `d` | duplicate the selected task — new-task form prefilled from it |
+| `N` | new from macro — fill the params, persist to `imake.yml` or run once |
+| click task row | select task (click a group header to toggle it) |
+| `Enter`, `i`, click log panel | attach — keys go to the task's shell |
+| `/` | search: filters the task list from the sidebar, or log lines while attached |
+| `Esc` | clear the active filter, then detach / leave fullscreen |
+| `Esc`, `Ctrl+\` | detach |
+| wheel over logs, `w`/`s`, `U`/`D`, `a`/`d` | scroll / page / top / bottom (game keys) |
+| `f` | full-screen the task panel (`esc` returns) |
+| `W` | toggle line wrapping in copy mode |
+| `c` | copy the task's output (the filtered lines when `/` is active) |
+| mouse drag over logs | character-level selection, editor-style — copied on release |
+| click a `:port` in the banner | open `http://localhost:port` in the browser |
+| `m` | release the mouse to the terminal for native selection (press again to recapture) |
+| select a section header | the right pane shows a live overview of the section's tasks |
+| `r` | run / restart the selected task with a cleared panel — on a section header, start the whole section |
+| `R` | reload `imake.yml` in place — new tasks start, removed ones stop |
+| `q`, `x` | stop the selected task — on a section header, stop the whole section |
+| `esc` (at rest), `g` | back to the groups table — tasks keep running |
+| `Ctrl+C` | quit (stops all tasks in every group) |
+
+For attached TUIs that need `esc` and `/` themselves (claude, vim,
+less), set `passthrough: true` — see
+[examples/modifier](examples/modifier).
+
+With `keep_shell: true` the task ends in a real interactive shell (`$SHELL`),
+so attaching gives you a prompt in that task's context — handy for rerunning
+dev servers, inspecting state, or poking at a failed build.
+
+### Lifecycle
+
+Per run, a task executes: `before` → `command` (with optional `timeout`) →
+`on_success`/`on_error`/`on_timeout` → `after` → optional `keep_shell` shell.
+`restart_policy: always` reruns the cycle when it ends; `on-failure` reruns
+only after a failure or timeout.
+
+Ports a task listens on are detected automatically and shown in the pane
+banner before the command (`dev#api ▸ :8080 · go run ./cmd/api`); click
+one to open it in your browser.
+
+Tasks sharing a `section` (formerly `group`, still accepted) are shown
+under a collapsible `▾ section` header, and
+tasks are nested under the dependency they wait for with tree connectors
+(`├──`/`└──`), so the sidebar reads like `tree` output.
+
+Sections nest by slash-separated path: `section: backend/messaging`
+renders a `messaging` heading indented under `backend`; folding a parent
+folds the subtree, and starting/stopping a parent header covers every
+nested sub-section. A `merge:` entry can set `section:` to rebase the
+folded group's tasks under a sub-section of the target group — their own
+sections nest beneath it — so many subprojects merge into one group as
+sibling sub-sections.
+
+Tasks with `manual: true` show as `▷` and wait until you press `r`.
+Tasks with `depends_on` show as `◌` and start automatically once every
+dependency has finished with success (manual tasks always need `r`).
+Dependency cycles and unknown names are rejected at startup.
+
+### Plain mode
+
+`imake -n [group]` opens the TUI straight into the new-task form — the
+fastest way to start a project: in a directory with no config, the first
+save creates `imake.yml`. With a config it opens `group` ready to add a
+task (a new group name works too); omitted, it defaults to `dev`, else
+the first group.
+
+`imake -m <group>` opens a group with every task treated as `manual: true`
+— nothing starts until you press `r` on it. `imake -p <group>` skips the
+TUI and streams the group's AUTO tasks with name-prefixed output — useful
+for CI logs; `manual: true` tasks are skipped (plain mode has no keyboard
+to start them) and listed, and `imake -p -a <group>` runs everything,
+manual included. Lifecycle hooks other than `command` are ignored in
+plain mode.
+
+See [examples/simple](examples/simple), [examples/lifecycle](examples/lifecycle),
+[examples/manual](examples/manual) and [examples/grouped](examples/grouped)
+for configs.
+
+### Macros
+
+When the same task shape repeats with only a name or path changing,
+define it once as a **macro** and stamp it out per instance. A
+`macros:` block holds parameterized task templates; a group entry with
+`macro:` expands them. `{{param}}` substitutes in every scalar — task
+names included — and all the usual field sugar works inside templates:
+
+```yaml
+macros:
+  service:
+    params: {svc: null, repo: ../storm}   # null = required, else a default
+    tasks:
+      migrate_{{svc}}:
+        command: make migrate SVC={{svc}}
+        dir: '{{repo}}'                   # quote values that START with {{
+        manual: true
+        section: svc_{{svc}}
+      run_{{svc}}:
+        command: make run SVC={{svc}}
+        dir: '{{repo}}'
+        depends_on: ['migrate_{{svc}}']   # quote {{ }} inside [flow] lists
+        section: svc_{{svc}}
+
+dev:
+  services:
+    macro: service
+    foreach:                 # one expansion per item
+      - policycheck          # bare scalar → the first declared param (svc)
+      - bridge
+      - {svc: analysis, repo: ../storm.pa}
+  flags:
+    macro: service
+    with: {svc: flags}       # single expansion: with OR foreach, not both
+```
+
+Generated tasks behave exactly like hand-written ones — sections,
+`depends_on`, `r`/`q`, the lot — and the pane banner shows their origin
+(`· macro:service`). They can't be edited in the `e` form (there is no
+literal YAML to rewrite); edit the macro or its `foreach` entry instead.
+`d` still duplicates one into a real task. Macros are local to the file
+that defines them; included subprojects expand their own. Undeclared
+`{{placeholders}}`, missing required params and generated-name
+collisions are all load errors.
+
+In the TUI, **`N`** opens *new from macro*: pick a macro, fill its
+params (defaults prefilled), and choose with the **Persist** toggle —
+**on** appends the values to the group's `foreach` list in `imake.yml`
+and reloads; **off** runs the expanded tasks once as *ephemeral* tasks,
+marked `(once)` in the sidebar, without touching the file. Ephemeral
+tasks survive `R` reloads; stop one and press `q` again to clear it.
+
+See [examples/macros](examples/macros).
+
+### Linking subprojects
+
+A parent `imake.yml` can include other projects' imake files with a
+top-level `include:` map — handy for monorepos and workbenches:
+
+```yaml
+include:
+  discover:            # → group "discover" here
+    path: ./discover
+    group: dev         # just that group from discover/imake.yml
+  backend: ./backend   # string form: ALL groups, as backend:dev, backend:test
+
+dev:
+  proxy: caddy run     # the parent's own groups still work
+```
+
+**`merge:` — folding into your own groups**: where `include` adds new
+groups, `merge` pulls subproject groups *into* yours. Every entry names
+its source group explicitly, and a list merges several sources at once —
+including groups from *deep* in the include tree via their namespaced
+names:
+
+```yaml
+merge:
+  dev:                    # my dev group gains...
+    - path: ./discover
+      group: dev          # ...discover's dev
+    - path: ./storm
+      group: w:jobs       # ...and a group two levels down (storm includes w)
+
+dev:
+  proxy: caddy run        # runs alongside all the merged tasks
+```
+
+Task-name collisions in a merged group are rejected at load, and an
+`include` alias that clashes with one of your own groups errors with a
+pointer to `merge:`. Merged tasks can be dependency targets for your
+own tasks (`depends_on` works within the merged group).
+
+Included tasks run with the **subproject directory as cwd**, so the
+subproject's config keeps working exactly as it does standalone. They keep
+their own sidebar `group:` labels and `depends_on` wiring, `R` re-reads
+every linked file, and `n`/`e` form edits write back to each task's own
+`imake.yml` (new tasks created in a merged group go to the parent's
+file). Includes nest (a subproject may include its own subprojects); the
+same subproject may be included from several aliases; only true cycles
+are rejected at load. Namespaced groups work everywhere a group does:
+`imake backend:dev`, `imake -p backend:test`.
+
+See [examples/linked](examples/linked).
+
+## More demos
+
+**Attach to a task's shell** — a `manual` task with `keep_shell`, started
+with `r`, then real commands typed straight into it:
+
+![attach demo](demo/attach.gif)
+
+**Search everywhere** — `/` filters the task list from the sidebar and log
+lines from log mode, k9s-style, with the prompt inside the panel being
+searched:
+
+![search demo](demo/search.gif)
+
+**Groups, dependencies and manual tasks** — collapsible `▾ group` headers,
+`tree`-style dependency nesting, and `▷` manual tasks started on demand:
+
+![groups demo](demo/groups.gif)
+
+**Viewing modes** — `LOG MODE` and `ATTACHED` badges, `f` fullscreen,
+`w` wrap toggle, `c` copy to clipboard, `q` stop and `r` fresh restart:
+
+![view demo](demo/view.gif)
+
+**Group picker and Makefile browser** — bare `imake` picks a group
+interactively; `imake .` browses Makefile targets:
+
+![picker demo](demo/picker.gif)
+
+## Bare `imake`
+
+With an `imake.yml` present, bare `imake` opens a group picker — arrow keys
+or click, Enter opens the group's task TUI — so nobody has to remember
+group names (a single-group config opens directly; piped output prints the
+plain list). Without one, a `Makefile` opens the target browser.
+
+## Makefile TUI
+
+Run `imake .` (or bare `imake` when only a `Makefile` exists): arrow keys
+to select a target, Enter to run it, Ctrl-C to quit. Target docs (text
+after `##`) show in the help pane.
+
+## Agent skill
+
+[skills/imake/SKILL.md](skills/imake/SKILL.md) teaches AI coding agents
+(Claude Code and friends) to write correct `imake.yml` configs — full
+syntax, macros, include/merge linking, and common recipes. The binary
+carries its own copy, so installing it needs no download:
+
+```sh
+imake --claude-init
+```
+
+It asks where the skill should go and writes it there:
+
+- **this project** — `./.claude/skills/imake/SKILL.md`, so the skill
+  travels with the repo and every collaborator's agent picks it up.
+  Commit it.
+- **this machine** — `~/.claude/skills/imake/SKILL.md` (or
+  `$CLAUDE_CONFIG_DIR`), available in every project you open.
+
+Answer up front to skip the question: `imake --claude-init project`
+or `imake --claude-init machine`. Re-running is safe — it rewrites the
+file only when the content changed.
+
+Because the skill ships *inside* the binary, `imake -u` and the
+background auto-update bring a new skill along with the new version;
+re-run `imake --claude-init` afterwards to write it out.
+
+## Debugging
+
+Set `IMAKE_DEBUG=/tmp/imake.log` to write key/message traces while the task
+runner TUI is open.
+
+## License
+
+Proprietary — Copyright (c) 2024-2026 Shireesh Kumar Gadidesi. All
+rights reserved. See [LICENSE](LICENSE).

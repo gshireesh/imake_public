@@ -1,0 +1,143 @@
+#!/bin/sh
+# imake installer: fetches the latest prebuilt binary from GitHub
+# Releases. Works on macOS, Linux, and Windows (Git Bash / MSYS).
+# Usage:
+#   curl -fsSL https://raw.githubusercontent.com/gshireesh/imake_public/main/install.sh | sh
+#
+# Overrides:
+#   IMAKE_INSTALL_DIR  target directory (skips the default logic below)
+#   IMAKE_NO_SUDO      set to 1 to never invoke sudo
+#   IMAKE_BASE_URL     alternate download base (used by local testing)
+#
+# Defaults: /usr/local/bin on macOS/Linux (sudo if needed and a terminal
+# is available), else ~/.local/bin added to your shell's PATH; on
+# Windows, %LOCALAPPDATA%\Programs\imake added to the user PATH.
+set -eu
+
+REPO="gshireesh/imake_public"
+BASE="${IMAKE_BASE_URL:-https://github.com/$REPO/releases/latest/download}"
+
+os=$(uname -s)
+case "$os" in
+  Darwin) os=darwin ;;
+  Linux) os=linux ;;
+  MINGW* | MSYS* | CYGWIN*) os=windows ;;
+  *) echo "imake: unsupported OS: $os" >&2; exit 1 ;;
+esac
+
+arch=$(uname -m)
+case "$arch" in
+  x86_64 | amd64) arch=amd64 ;;
+  arm64 | aarch64) arch=arm64 ;;
+  *) echo "imake: unsupported architecture: $arch" >&2; exit 1 ;;
+esac
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+fetch() {
+  echo "Downloading $1"
+  curl -fsSL "$1" -o "$2"
+}
+
+if [ "$os" = windows ]; then
+  bin=imake.exe
+  if [ -n "${IMAKE_INSTALL_DIR:-}" ]; then
+    dir="$IMAKE_INSTALL_DIR"
+  else
+    localapp="${LOCALAPPDATA:-$HOME/AppData/Local}"
+    if command -v cygpath >/dev/null 2>&1; then
+      localapp=$(cygpath -u "$localapp")
+    fi
+    dir="$localapp/Programs/imake"
+  fi
+  mkdir -p "$dir"
+
+  fetch "$BASE/imake_windows_${arch}.zip" "$tmp/imake.zip"
+  if command -v unzip >/dev/null 2>&1; then
+    unzip -oq "$tmp/imake.zip" -d "$tmp"
+  elif command -v powershell.exe >/dev/null 2>&1; then
+    winzip=$(cygpath -w "$tmp/imake.zip" 2>/dev/null || echo "$tmp/imake.zip")
+    windst=$(cygpath -w "$tmp" 2>/dev/null || echo "$tmp")
+    powershell.exe -NoProfile -Command "Expand-Archive -Path '$winzip' -DestinationPath '$windst' -Force"
+  else
+    echo "imake: need unzip or powershell.exe to extract the archive" >&2
+    exit 1
+  fi
+  cp "$tmp/$bin" "$dir/$bin"
+  echo "Installed imake to $dir/$bin"
+  "$dir/$bin" --version || true
+
+  # Persist the install dir on the Windows user PATH (idempotent).
+  if command -v powershell.exe >/dev/null 2>&1; then
+    windir=$(cygpath -w "$dir" 2>/dev/null || echo "$dir")
+    powershell.exe -NoProfile -Command "
+      \$p = [Environment]::GetEnvironmentVariable('Path', 'User')
+      if (-not ((\$p -split ';') -contains '$windir')) {
+        [Environment]::SetEnvironmentVariable('Path', \"\$p;$windir\", 'User')
+        Write-Host 'Added $windir to your user PATH - restart your terminal to pick it up'
+      }
+    "
+  else
+    echo "NOTE: add $dir to your PATH"
+  fi
+  exit 0
+fi
+
+# macOS / Linux
+fetch "$BASE/imake_${os}_${arch}.tar.gz" "$tmp/imake.tar.gz"
+tar -xzf "$tmp/imake.tar.gz" -C "$tmp"
+
+use_sudo=""
+if [ -n "${IMAKE_INSTALL_DIR:-}" ]; then
+  dir="$IMAKE_INSTALL_DIR"
+elif [ -w /usr/local/bin ]; then
+  dir=/usr/local/bin
+elif [ "${IMAKE_NO_SUDO:-0}" != 1 ] && command -v sudo >/dev/null 2>&1 && [ -r /dev/tty ] && [ -t 1 ]; then
+  # /usr/local/bin is on every default PATH; ask once for sudo.
+  dir=/usr/local/bin
+  use_sudo=1
+else
+  dir="$HOME/.local/bin"
+fi
+
+if [ -n "$use_sudo" ]; then
+  echo "Installing to $dir (sudo may prompt for your password)"
+  sudo install -d "$dir"
+  sudo install -m 0755 "$tmp/imake" "$dir/imake"
+else
+  mkdir -p "$dir"
+  install -m 0755 "$tmp/imake" "$dir/imake"
+fi
+echo "Installed imake to $dir/imake"
+"$dir/imake" --version || true
+
+# Make sure the chosen directory is on PATH; for the ~/.local/bin
+# fallback, persist it in the shell rc so no manual step is needed.
+case ":$PATH:" in
+  *":$dir:"*) ;;
+  *)
+    if [ "$dir" = "$HOME/.local/bin" ]; then
+      line='export PATH="$HOME/.local/bin:$PATH"'
+      case "${SHELL:-}" in
+        */zsh) rc="$HOME/.zshrc" ;;
+        */bash) rc="$HOME/.bashrc" ;;
+        */fish) rc="" ;;
+        *) rc="$HOME/.profile" ;;
+      esac
+      if [ -n "$rc" ]; then
+        if ! grep -qsF '.local/bin' "$rc"; then
+          printf '\n# added by imake installer\n%s\n' "$line" >>"$rc"
+          echo "Added ~/.local/bin to PATH in $rc — restart your shell or run:"
+          echo "  $line"
+        else
+          echo "~/.local/bin is already in $rc — restart your shell to pick it up"
+        fi
+      else
+        echo "Add ~/.local/bin to your PATH: fish_add_path \$HOME/.local/bin"
+      fi
+    else
+      echo "NOTE: $dir is not in your PATH"
+    fi
+    ;;
+esac
