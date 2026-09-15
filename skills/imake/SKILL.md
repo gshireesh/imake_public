@@ -11,6 +11,13 @@ with per-task ptys and real terminal emulation. Config lives in
 
 ## Shape
 
+Start new files with the schema line so editors complete and validate
+fields:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/gshireesh/imake_public/main/imake.schema.json
+```
+
 Top level = group names. Each group maps task names to either a plain
 command string or an object:
 
@@ -66,6 +73,9 @@ Field notes:
   sub-section of the target group (the tasks' own sections nest beneath
   it): `merge: {dev: [{path: ./x, group: dev, section: messaging}]}`.
   `group:` is a deprecated alias for it; don't write it in new configs.
+- After hand-editing a config, `imake migrate --check` tells you whether
+  it matches the canonical format; `imake migrate` fixes it in place
+  without changing behavior (it verifies every task before writing).
 
 ## Macros
 
@@ -107,7 +117,8 @@ Rules: macros are local to the file that defines them (included files
 expand their own); placeholders must be declared params — checked at
 load even for unused macros; generated names colliding with hand-written
 tasks (or each other) are load errors; generated tasks are read-only in
-the TUI's edit form — edit the macro or its `foreach` entry instead. In
+the TUI's edit form — edit the macro or its `foreach` entry instead. Deleting one (ctrl+d) removes the whole `foreach`
+item that generated it, sibling tasks included. In
 the TUI, `N` opens "new from macro": fill the params, then either
 persist (appends a `foreach` item) or run once without touching the
 file.
@@ -152,7 +163,59 @@ imake -m [group]   everything manual — start each task with r
 imake -p <group>   plain prefixed output, no TUI (CI-friendly); runs auto
                    tasks only — add -a to include manual: tasks
 imake .            browse Makefile targets
+imake migrate      rewrite imake.yml into the canonical format (deprecated
+                   keys, dir:, durations, key order); --dry-run, --check
+imake ctl <cmd>    drive a RUNNING imake from this shell (see below)
 ```
+
+## Driving a running imake
+
+When someone already has `imake <group>` open in another terminal, do
+not start a second one — attach to theirs. `imake ctl` talks to the
+running TUI over loopback and finds the session by working directory,
+so inside the project no session id is needed.
+
+```
+imake ctl status              every open task: state, phase, pid, ports
+imake ctl logs <task> -n 200  that task's output, ANSI stripped
+imake ctl logs <task> -f      follow it live
+imake ctl restart <task>      exactly what pressing r does
+imake ctl start|stop <task>   start a stopped/manual task, or stop one
+imake ctl reload              re-read imake.yml after editing it
+imake ctl wait <task>         block until it settles; exit 1 if it failed
+imake ctl ls                  list running sessions
+```
+
+**The loop to use after changing code.** `wait` is the important part:
+it blocks until the task stops running and sets the exit status, so
+there is no sleeping and no guessing.
+
+```sh
+imake ctl restart api          # relaunch the task that covers your change
+imake ctl wait api --timeout 60s || imake ctl logs api -n 80
+```
+
+For a long-running server that never settles, skip `wait` and read the
+log directly after giving it a moment:
+
+```sh
+imake ctl restart api && sleep 2 && imake ctl logs api -n 40
+```
+
+Notes that matter in practice:
+
+- Only groups the user has actually **entered** in the TUI are visible.
+  `imake ctl status` returning nothing means they are sitting on the
+  groups table, not that something broke.
+- Address a task as `<task>`, or `<group>:<task>` when two open groups
+  use the same name.
+- Add `--json` to any command for structured output.
+- A `prompt: true` task will not start from `ctl` — it queues the
+  are-you-sure dialog for the person at the keyboard. That is
+  deliberate; tell them to confirm it.
+- `restart` clears the task's scrollback, so read logs *after* the
+  restart, not before.
+- Editing `imake.yml` does not take effect until `imake ctl reload`.
 
 ## Recipes
 

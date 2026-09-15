@@ -1,0 +1,353 @@
+{
+  "$id": "https://raw.githubusercontent.com/gshireesh/imake_public/main/imake.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": {
+    "$ref": "#/definitions/group"
+  },
+  "definitions": {
+    "command": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "description": "steps joined with \u0026\u0026",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      ]
+    },
+    "group": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "$ref": "#/definitions/task"
+          },
+          {
+            "$ref": "#/definitions/macroUse"
+          }
+        ]
+      },
+      "description": "task name -\u003e task",
+      "type": "object"
+    },
+    "macroUse": {
+      "additionalProperties": false,
+      "properties": {
+        "foreach": {
+          "description": "one expansion per item: a scalar binds the first param, a mapping binds by name",
+          "type": "array"
+        },
+        "macro": {
+          "description": "macro to instantiate",
+          "type": "string"
+        },
+        "with": {
+          "description": "one expansion: param -\u003e value",
+          "type": "object"
+        }
+      },
+      "required": [
+        "macro"
+      ],
+      "type": "object"
+    },
+    "task": {
+      "oneOf": [
+        {
+          "description": "shorthand: just the command",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "after": {
+              "$ref": "#/definitions/command",
+              "description": "always runs last"
+            },
+            "before": {
+              "$ref": "#/definitions/command",
+              "description": "runs before the command"
+            },
+            "command": {
+              "$ref": "#/definitions/command",
+              "description": "shell command; a list runs as one \u0026\u0026 chain"
+            },
+            "ctrl_modifier": {
+              "deprecated": true,
+              "deprecationMessage": "deprecated: use passthrough - run imake migrate",
+              "description": "deprecated: use passthrough - run imake migrate",
+              "type": "boolean"
+            },
+            "depends_on": {
+              "description": "start after these tasks succeed",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "dir": {
+              "description": "working directory, relative to this file",
+              "type": "string"
+            },
+            "env": {
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean"
+                ]
+              },
+              "description": "extra environment for every phase",
+              "type": "object"
+            },
+            "group": {
+              "deprecated": true,
+              "deprecationMessage": "deprecated: use section - run imake migrate",
+              "description": "deprecated: use section - run imake migrate",
+              "type": "string"
+            },
+            "keep_shell": {
+              "description": "drop into an interactive shell when done",
+              "type": "boolean"
+            },
+            "manual": {
+              "description": "start only when you press r",
+              "type": "boolean"
+            },
+            "on_error": {
+              "$ref": "#/definitions/command",
+              "description": "runs when the command fails"
+            },
+            "on_success": {
+              "$ref": "#/definitions/command",
+              "description": "runs when the command succeeds"
+            },
+            "on_timeout": {
+              "$ref": "#/definitions/command",
+              "description": "runs when the command times out"
+            },
+            "passthrough": {
+              "description": "attached esc and / go to the task; ctrl+t reaches imake",
+              "type": "boolean"
+            },
+            "prompt": {
+              "description": "are-you-sure before every start: true, or the message",
+              "type": [
+                "boolean",
+                "string"
+              ]
+            },
+            "prompt_description": {
+              "deprecated": true,
+              "deprecationMessage": "deprecated: use prompt: \u003cmessage\u003e - run imake migrate",
+              "description": "deprecated: use prompt: \u003cmessage\u003e - run imake migrate",
+              "type": "string"
+            },
+            "restart_policy": {
+              "description": "rerun the lifecycle when it ends",
+              "enum": [
+                "never",
+                "on-failure",
+                "always"
+              ],
+              "type": "string"
+            },
+            "section": {
+              "description": "sidebar sub-heading; slashes nest (infra/db)",
+              "type": "string"
+            },
+            "timeout": {
+              "description": "stop the command after this long",
+              "oneOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "pattern": "^([0-9]*\\.?[0-9]+(ns|us|µs|ms|s|m|h))+$",
+                  "type": "string"
+                }
+              ]
+            },
+            "triggers": {
+              "deprecated": true,
+              "deprecationMessage": "deprecated: use manual: true - run imake migrate",
+              "description": "deprecated: use manual: true - run imake migrate",
+              "enum": [
+                "auto",
+                "manual"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "command"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "description": "imake task runner config: top-level keys are groups of tasks (generated by imake schema)",
+  "properties": {
+    "include": {
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "group": {
+                    "description": "one group from the subproject",
+                    "type": "string"
+                  },
+                  "path": {
+                    "description": "subproject directory, relative to this file",
+                    "type": "string"
+                  },
+                  "section": {
+                    "description": "merge only: rebase the folded tasks under this section",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          {
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "group": {
+                      "description": "one group from the subproject",
+                      "type": "string"
+                    },
+                    "path": {
+                      "description": "subproject directory, relative to this file",
+                      "type": "string"
+                    },
+                    "section": {
+                      "description": "merge only: rebase the folded tasks under this section",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "type": "array"
+          }
+        ]
+      },
+      "description": "add other projects' groups: alias -\u003e path or {path, group}",
+      "type": "object"
+    },
+    "macros": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "params": {
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean",
+                "null"
+              ]
+            },
+            "description": "param -\u003e default; null marks it required",
+            "type": "object"
+          },
+          "tasks": {
+            "additionalProperties": {
+              "type": [
+                "string",
+                "object"
+              ]
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "tasks"
+        ],
+        "type": "object"
+      },
+      "description": "parameterized task templates; {{param}} substitutes in every scalar",
+      "type": "object"
+    },
+    "merge": {
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "group": {
+                "description": "one group from the subproject",
+                "type": "string"
+              },
+              "path": {
+                "description": "subproject directory, relative to this file",
+                "type": "string"
+              },
+              "section": {
+                "description": "merge only: rebase the folded tasks under this section",
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "type": "object"
+          },
+          {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "group": {
+                  "description": "one group from the subproject",
+                  "type": "string"
+                },
+                "path": {
+                  "description": "subproject directory, relative to this file",
+                  "type": "string"
+                },
+                "section": {
+                  "description": "merge only: rebase the folded tasks under this section",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        ]
+      },
+      "description": "fold subproject groups into this file's groups: group -\u003e [{path, group, section}]",
+      "type": "object"
+    }
+  },
+  "title": "imake.yml",
+  "type": "object"
+}
