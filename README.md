@@ -16,6 +16,13 @@ no Go needed:
 curl -fsSL https://raw.githubusercontent.com/gshireesh/imake_public/main/install.sh | sh
 ```
 
+It never uses sudo. On macOS and Linux it installs into a per-user
+directory already on your `PATH` — `~/.local/bin`, `~/bin`, or another
+stable directory under your home (version-manager directories such as
+nvm or sdkman are skipped) — creating `~/.local/bin` and adding it to
+your shell rc when none is. An existing writable install is upgraded in
+place; set `IMAKE_INSTALL_DIR` to choose the directory yourself.
+
 On Windows it installs to `%LOCALAPPDATA%\Programs\imake` and adds it
 to your user PATH; native PowerShell users can use instead:
 
@@ -36,6 +43,12 @@ The TUI also checks for a new release in the background (at most once
 a day) and downloads it quietly — the header shows a restart hint and
 the next launch runs the new version. Set `IMAKE_NO_AUTOUPDATE=1` to
 disable.
+
+If imake lives somewhere you can't write to (an old sudo install in
+`/usr/local/bin`), `imake -u` installs the update into your per-user
+directory instead and prints the one `sudo rm` needed if the old copy
+still comes first on `PATH`; the background check then just shows
+"run imake -u" rather than moving files on its own.
 
 ## Task runner
 

@@ -6,12 +6,14 @@
 #
 # Overrides:
 #   IMAKE_INSTALL_DIR  target directory (skips the default logic below)
-#   IMAKE_NO_SUDO      set to 1 to never invoke sudo
 #   IMAKE_BASE_URL     alternate download base (used by local testing)
 #
-# Defaults: /usr/local/bin on macOS/Linux (sudo if needed and a terminal
-# is available), else ~/.local/bin added to your shell's PATH; on
-# Windows, %LOCALAPPDATA%\Programs\imake added to the user PATH.
+# Defaults: never sudo. On macOS/Linux, an existing imake is upgraded in
+# place when its directory is writable; otherwise imake goes to a
+# per-user bin directory already on your PATH (~/.local/bin, ~/bin, or
+# another stable directory under $HOME), else ~/.local/bin added to your
+# shell's PATH. On Windows, %LOCALAPPDATA%\Programs\imake added to the
+# user PATH.
 set -eu
 
 REPO="gshireesh/imake_public"
@@ -88,27 +90,46 @@ fi
 fetch "$BASE/imake_${os}_${arch}.tar.gz" "$tmp/imake.tar.gz"
 tar -xzf "$tmp/imake.tar.gz" -C "$tmp"
 
-use_sudo=""
+# user_bin_dir prints the first writable, stable directory under $HOME
+# on PATH, preferring ~/.local/bin and ~/bin. Version-manager and app
+# directories are skipped: they come and go (a new node version, an app
+# update) and would take imake with them.
+user_bin_dir() {
+  for want in "$HOME/.local/bin" "$HOME/bin"; do
+    case ":$PATH:" in *":$want:"*) [ -w "$want" ] && { echo "$want"; return; } ;; esac
+  done
+  old_ifs=$IFS
+  IFS=:
+  for d in $PATH; do
+    case "$d" in
+      "$HOME"/*) ;;
+      *) continue ;;
+    esac
+    case "$d/" in
+      */.nvm/* | */.sdkman/* | */.pyenv/* | */.rbenv/* | */.asdf/* | */.volta/* | */.fnm/* | \
+        */.jenv/* | */.goenv/* | */node_modules/* | */shims/* | */.docker/* | */Library/* | */Applications/*) continue ;;
+    esac
+    if [ -d "$d" ] && [ -w "$d" ]; then
+      IFS=$old_ifs
+      echo "$d"
+      return
+    fi
+  done
+  IFS=$old_ifs
+}
+
+existing=$(command -v imake 2>/dev/null || true)
 if [ -n "${IMAKE_INSTALL_DIR:-}" ]; then
   dir="$IMAKE_INSTALL_DIR"
-elif [ -w /usr/local/bin ]; then
-  dir=/usr/local/bin
-elif [ "${IMAKE_NO_SUDO:-0}" != 1 ] && command -v sudo >/dev/null 2>&1 && [ -r /dev/tty ] && [ -t 1 ]; then
-  # /usr/local/bin is on every default PATH; ask once for sudo.
-  dir=/usr/local/bin
-  use_sudo=1
+elif [ -n "$existing" ] && [ -w "$(dirname "$existing")" ]; then
+  dir=$(dirname "$existing")
 else
-  dir="$HOME/.local/bin"
+  dir=$(user_bin_dir)
+  [ -n "$dir" ] || dir="$HOME/.local/bin"
 fi
 
-if [ -n "$use_sudo" ]; then
-  echo "Installing to $dir (sudo may prompt for your password)"
-  sudo install -d "$dir"
-  sudo install -m 0755 "$tmp/imake" "$dir/imake"
-else
-  mkdir -p "$dir"
-  install -m 0755 "$tmp/imake" "$dir/imake"
-fi
+mkdir -p "$dir"
+install -m 0755 "$tmp/imake" "$dir/imake"
 echo "Installed imake to $dir/imake"
 "$dir/imake" --version || true
 
@@ -128,6 +149,7 @@ case ":$PATH:" in
       if [ -n "$rc" ]; then
         if ! grep -qsF '.local/bin' "$rc"; then
           printf '\n# added by imake installer\n%s\n' "$line" >>"$rc"
+          prepended=1
           echo "Added ~/.local/bin to PATH in $rc — restart your shell or run:"
           echo "  $line"
         else
@@ -141,3 +163,17 @@ case ":$PATH:" in
     fi
     ;;
 esac
+
+# An older imake earlier on PATH (e.g. a sudo install in /usr/local/bin)
+# would keep winning; say how to retire it.
+# (Not when ~/.local/bin was just prepended in the rc: after a restart
+# the new copy comes first anyway.)
+first=$(command -v imake 2>/dev/null || true)
+if [ -z "${prepended:-}" ] && [ -n "$first" ] && [ "$first" != "$dir/imake" ]; then
+  echo "NOTE: $first comes first on your PATH and will still run - remove it once:"
+  if [ -w "$(dirname "$first")" ]; then
+    echo "  rm $first"
+  else
+    echo "  sudo rm $first"
+  fi
+fi
