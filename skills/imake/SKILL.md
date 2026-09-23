@@ -116,8 +116,11 @@ dev:
 Rules: macros are local to the file that defines them (included files
 expand their own); placeholders must be declared params — checked at
 load even for unused macros; generated names colliding with hand-written
-tasks (or each other) are load errors; generated tasks are read-only in
-the TUI's edit form — edit the macro or its `foreach` entry instead. Deleting one (ctrl+d) removes the whole `foreach`
+tasks (or each other) are load errors; generated tasks have no entry of their own — in the TUI, `e` on a
+generated task (or on a macro row in the macros branch of the sidebar)
+opens the macro editor: rename, params, and the task templates, with
+`{{placeholders}}` kept as raw text. Saves are re-parsed and re-expanded
+before the file is touched. Deleting one (ctrl+d) removes the whole `foreach`
 item that generated it, sibling tasks included. In
 the TUI, `N` opens "new from macro": fill the params, then either
 persist (appends a `foreach` item) or run once without touching the
@@ -181,6 +184,8 @@ imake ctl logs <task> -n 200  that task's output, ANSI stripped
 imake ctl logs <task> -f      follow it live
 imake ctl restart <task>      exactly what pressing r does
 imake ctl start|stop <task>   start a stopped/manual task, or stop one
+imake ctl restart <task> -f   (or start -f) stream the new run until it
+                              settles; exit 1 if it failed
 imake ctl reload              re-read imake.yml after editing it
 imake ctl wait <task>         block until it settles; exit 1 if it failed
 imake ctl ls                  list running sessions

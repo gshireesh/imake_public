@@ -147,7 +147,9 @@ For completion and validation in editors with the YAML language server
 | `m` | release the mouse to the terminal for native selection (press again to recapture) |
 | select a section header | the right pane shows a live overview of the section's tasks |
 | `r` | run / restart the selected task with a cleared panel — on a section header, start the whole section |
-| `ctrl+d` | delete the selected task from its file (asks first) — on a section header, every task under it; on a macro-generated task, the `foreach` item that produced it; dependents lose it from `depends_on` |
+| macros branch | the top of the sidebar lists every macro, its instances and what each generated; the right pane shows params, templates and live task status |
+| `e` on a macro row (or a generated task) | edit the macro: rename it, add/remove params, edit or add task templates — every save is validated and re-expanded before the file is written |
+| `ctrl+d` | delete the selected task from its file (asks first) — on a section header, every task under it; on a macro-generated task or instance row, the `foreach` item that produced it; on a macro row, the macro itself once nothing instantiates it; dependents lose it from `depends_on` |
 | `R` | reload `imake.yml` in place — new tasks start, removed ones stop |
 | `q`, `x` | stop the selected task — on a section header, stop the whole section |
 | `esc` (at rest), `g` | back to the groups table — tasks keep running |
@@ -397,6 +399,7 @@ keep watching the same panes.
 imake ctl status                 # every open task: state, phase, pid, ports
 imake ctl logs api -n 200        # that task's output, ANSI stripped (-f follows)
 imake ctl restart api            # exactly what pressing r does
+imake ctl restart api -f         # ...and stream the new run; exit 1 if it fails
 imake ctl start|stop api         # start a stopped/manual task, or stop one
 imake ctl reload                 # re-read imake.yml after editing it
 imake ctl wait api --timeout 60s # block until it settles; exit 1 if it failed
