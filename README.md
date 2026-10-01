@@ -39,16 +39,27 @@ binary.
 
 Once installed, `imake -u` (or `--update`) self-updates to the latest
 release, `imake -v` prints the version, and `imake -h` shows usage.
-The TUI also checks for a new release in the background (at most once
-a day) and downloads it quietly — the header shows a restart hint and
-the next launch runs the new version. Set `IMAKE_NO_AUTOUPDATE=1` to
-disable.
+A couple of seconds after the TUI starts it checks, in the background,
+for a newer release (at most one lookup a day) and for a config that
+`imake migrate` would rewrite. Either shows up as an offer in the
+header: **U** accepts it, **I** sets it aside.
+
+- **Update** — U downloads and installs the release; the header then
+  says to quit and reopen imake to run it. I skips that version (you
+  won't be asked about it again) and reminds you that `imake -u` does
+  it any time.
+- **Migrate** — U rewrites `imake.yml` into the current format and
+  reloads it. I hides the offer for the session; the header keeps a
+  dim `run imake migrate` hint.
+
+While an offer is showing, U answers it instead of paging the logs
+(pgup still pages). Set `IMAKE_NO_AUTOUPDATE=1` to skip the update
+check.
 
 If imake lives somewhere you can't write to (an old sudo install in
 `/usr/local/bin`), `imake -u` installs the update into your per-user
 directory instead and prints the one `sudo rm` needed if the old copy
-still comes first on `PATH`; the background check then just shows
-"run imake -u" rather than moving files on its own.
+still comes first on `PATH`.
 
 ## Task runner
 
@@ -430,29 +441,47 @@ the next time a session starts or `imake ctl ls` runs. Set
 ## Agent skill
 
 [skills/imake/SKILL.md](skills/imake/SKILL.md) teaches AI coding agents
-(Claude Code and friends) to write correct `imake.yml` configs — full
-syntax, macros, include/merge linking, and common recipes. The binary
-carries its own copy, so installing it needs no download:
+to write correct `imake.yml` configs — full syntax, macros,
+include/merge linking, and common recipes. It is a standard
+[Agent Skill](https://agentskills.io): one `SKILL.md` that Claude Code,
+Codex, Cursor, GitHub Copilot, Gemini CLI, OpenCode, goose and Amp all
+read. The binary carries its own copy, so installing it needs no
+download:
 
 ```sh
-imake --claude-init
+imake --ai
 ```
 
-It asks where the skill should go and writes it there:
+It asks two things:
 
-- **this project** — `./.claude/skills/imake/SKILL.md`, so the skill
-  travels with the repo and every collaborator's agent picks it up.
-  Commit it.
-- **this machine** — `~/.claude/skills/imake/SKILL.md` (or
-  `$CLAUDE_CONFIG_DIR`), available in every project you open.
+1. **Where** — this machine (the default, every project you open) or
+   this project (commit the files so collaborators' agents get it too).
+2. **Which agents** — every agent imake knows is listed, with the ones
+   found on this machine (config dir or binary on `PATH`) ticked. Enter
+   takes the ticked ones; `all` or numbers like `1,3` pick others.
 
-Answer up front to skip the question: `imake --claude-init project`
-or `imake --claude-init machine`. Re-running is safe — it rewrites the
-file only when the content changed.
+Agents only differ in the directory they scan, so imake writes at most
+two copies:
 
-Because the skill ships *inside* the binary, `imake -u` and the
-background auto-update bring a new skill along with the new version;
-re-run `imake --claude-init` afterwards to write it out.
+| File | Read by |
+|------|---------|
+| `~/.claude/skills/imake/SKILL.md` (or `$CLAUDE_CONFIG_DIR`) | Claude Code |
+| `~/.agents/skills/imake/SKILL.md` | Codex, Cursor, Copilot, Gemini CLI, OpenCode, goose, Amp |
+
+Project scope uses `./.claude/skills/…` and `./.agents/skills/…`.
+Agents load skills when a session starts and pick this one up by its
+description whenever a task mentions `imake.yml`, so there is nothing
+to enable — just restart open sessions.
+
+Skip the questions in scripts: `imake --ai machine` installs for every
+detected agent, `imake --ai project --agents claude,codex` for the
+named ones. `imake --claude-init` still works and means
+`--agents claude`. Re-running is safe — a file is rewritten only when
+its content changed.
+
+Because the skill ships *inside* the binary, an update brings a new
+skill along with the new version; re-run `imake --ai` afterwards to
+write it out.
 
 ## Debugging
 
