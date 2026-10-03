@@ -330,6 +330,14 @@ See [examples/linked](examples/linked).
 
 ### Keeping imake.yml current
 
+After hand-editing, `imake validate` answers "did I break it?" without
+opening the TUI: it loads the file exactly as running would — parse,
+includes, macro expansion — then checks every group is runnable
+(commands present, dependencies known and acyclic), one line per group,
+exit 1 on any error. `imake validate <group>` checks just one group.
+Deprecated keys surface as a warning, and formatting is `migrate`'s
+job, not an error here.
+
 `imake migrate` rewrites the config in the current directory into the
 format imake writes today, so hand-written and older files converge:
 

@@ -73,8 +73,12 @@ Field notes:
   sub-section of the target group (the tasks' own sections nest beneath
   it): `merge: {dev: [{path: ./x, group: dev, section: messaging}]}`.
   `group:` is a deprecated alias for it; don't write it in new configs.
-- After hand-editing a config, `imake migrate --check` tells you whether
-  it matches the canonical format; `imake migrate` fixes it in place
+- **After hand-editing a config, run `imake validate`** — it loads the
+  file exactly as running would (parse, includes, macro expansion) and
+  checks every group is runnable (commands present, deps known and
+  acyclic), exiting 1 on any error. `imake validate <group>` checks just
+  one. Separately, `imake migrate --check` tells you whether the file
+  matches the canonical *format*; `imake migrate` fixes that in place
   without changing behavior (it verifies every task before writing).
 
 ## Macros
@@ -166,6 +170,8 @@ imake -m [group]   everything manual — start each task with r
 imake -p <group>   plain prefixed output, no TUI (CI-friendly); runs auto
                    tasks only — add -a to include manual: tasks
 imake .            browse Makefile targets
+imake validate     check imake.yml loads and every group is runnable;
+                   validate <group> checks one. Run after hand-edits
 imake migrate      rewrite imake.yml into the canonical format (deprecated
                    keys, dir:, durations, key order); --dry-run, --check
 imake ctl <cmd>    drive a RUNNING imake from this shell (see below)
@@ -221,6 +227,8 @@ Notes that matter in practice:
 - `restart` clears the task's scrollback, so read logs *after* the
   restart, not before.
 - Editing `imake.yml` does not take effect until `imake ctl reload`.
+  Run `imake validate` first so a broken edit never reaches the
+  running session.
 
 ## Recipes
 
