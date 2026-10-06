@@ -167,6 +167,9 @@ imake              groups table (k9s-style); enter opens, esc/g backs out
 imake <group>      open straight into a group
 imake -n [group]   open the new-task form (creates imake.yml if missing)
 imake -m [group]   everything manual — start each task with r
+imake -s <group>   service: run the group in the background with no
+                   terminal (survives closed terminals / dropped ssh);
+                   imake <group> attaches, imake ctl quit stops it
 imake -p <group>   plain prefixed output, no TUI (CI-friendly); runs auto
                    tasks only — add -a to include manual: tasks
 imake .            browse Makefile targets
@@ -194,8 +197,17 @@ imake ctl restart <task> -f   (or start -f) stream the new run until it
                               settles; exit 1 if it failed
 imake ctl reload              re-read imake.yml after editing it
 imake ctl wait <task>         block until it settles; exit 1 if it failed
-imake ctl ls                  list running sessions
+imake ctl service on|off      keep (or stop keeping) tasks alive without a terminal
+imake ctl quit                stop every task and end the session
+imake ctl ls                  list running sessions (MODE: attached, service,
+                              background)
 ```
+
+No session running and you need one (a dev server to test against)?
+`imake -s <group>` starts the group in the background without a
+terminal — then drive it with `imake ctl` exactly as above, and
+`imake ctl quit` when done. The user can `imake <group>` at any time
+to watch the same session in the TUI.
 
 **The loop to use after changing code.** `wait` is the important part:
 it blocks until the task stops running and sets the exit status, so

@@ -164,6 +164,8 @@ For completion and validation in editors with the YAML language server
 | `R` | reload `imake.yml` in place — new tasks start, removed ones stop |
 | `q`, `x` | stop the selected task — on a section header, stop the whole section |
 | `esc` (at rest), `g` | back to the groups table — tasks keep running |
+| `S` | service mode: tasks outlive a closed terminal or a dropped ssh connection (see below) |
+| `Ctrl+Z` | detach: the shell gets its prompt back, everything keeps running — `imake <group>` re-attaches |
 | `Ctrl+C` | quit (stops all tasks in every group) |
 
 For attached TUIs that need `esc` and `/` themselves (claude, vim,
@@ -406,6 +408,39 @@ Run `imake .` (or bare `imake` when only a `Makefile` exists): arrow keys
 to select a target, Enter to run it, Ctrl-C to quit. Target docs (text
 after `##`) show in the help pane.
 
+## Service mode: tasks that outlive the terminal
+
+Every `imake <group>` runs its tasks in a background process of its own
+and hands it the terminal. By default that changes nothing: close the
+terminal (or lose the ssh connection behind it) and everything stops,
+as it always did. Turn service mode on and the tasks keep running
+without a terminal instead — the groups table, the logs and the
+control plane stay live, and the next `imake <group>` in that
+directory picks the session up where you left it.
+
+```sh
+imake -s dev        # run dev in the background from the start, no terminal
+imake dev           # attach to it: the usual TUI, same tasks, same logs
+# ctrl+z  → detach: shell back, dev keeps running
+# S       → toggle service mode on an open session (header shows SERVICE)
+imake ctl ls        # MODE: attached, service (attached, survives), background
+imake ctl quit      # stop every task and end the session
+```
+
+`imake -s dev` against a session that is already running flips it to
+service mode and opens `dev` without taking your screen, so an agent
+can start a group it needs without a terminal at all. Attaching from a
+second terminal takes the session over; the first one is told so and
+returns to its shell. `IMAKE_NO_SERVICE=1` runs the TUI in-process,
+the old way (always the case on Windows).
+
+Whether in-process or in the background, imake keeps a tiny watchdog
+(`imake __reaper`) holding a pipe to it. If imake ever dies without
+stopping its tasks — a crash, `kill -9`, the OOM killer — the pipe
+closes and the watchdog stops every task process group: hangup and
+term first, kill after five seconds for anything still there. Nothing
+is left running behind an imake that is gone.
+
 ## Driving a running imake
 
 A group you already have open can be driven from another shell —
@@ -422,7 +457,9 @@ imake ctl restart api -f         # ...and stream the new run; exit 1 if it fails
 imake ctl start|stop api         # start a stopped/manual task, or stop one
 imake ctl reload                 # re-read imake.yml after editing it
 imake ctl wait api --timeout 60s # block until it settles; exit 1 if it failed
-imake ctl ls                     # list running sessions
+imake ctl service on|off         # keep (or stop keeping) tasks alive without a terminal
+imake ctl quit                   # stop every task and end the session
+imake ctl ls                     # list running sessions and their mode
 ```
 
 `wait` is what makes this useful to a script or an agent: it blocks
