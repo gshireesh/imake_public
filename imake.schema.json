@@ -291,7 +291,7 @@
         ],
         "type": "object"
       },
-      "description": "parameterized task templates; {{param}} substitutes in every scalar",
+      "description": "parameterized task templates; {{param}} substitutes in every scalar. Worth it only when the same few tasks repeat for three or more instances - otherwise write plain tasks",
       "type": "object"
     },
     "merge": {

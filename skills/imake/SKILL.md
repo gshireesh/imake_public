@@ -83,11 +83,39 @@ Field notes:
 
 ## Macros
 
-A `macros:` top-level block defines parameterized task templates; a
-group entry with `macro:` stamps them out. `{{param}}` substitutes in
-every scalar — task names included — and all field sugar works inside
-templates. Use a macro whenever the same task shape repeats with only a
-name or path changing.
+**Plain tasks are the default. Add a macro only when it is necessary.**
+A macro trades readability for less repetition: its tasks no longer
+appear in the file, cannot be edited one at a time, and every reader has
+to expand `{{params}}` in their head. That trade only pays when the
+repetition is real.
+
+Write a macro when:
+
+- the same shape of **two or more tasks** repeats for **three or more**
+  instances with only a name or path changing (a migrate + run pair per
+  service, say), or
+- the user asks for one, or
+- the file already has a macro for this shape — then add a `foreach`
+  item to it instead of hand-writing another copy.
+
+Do not write a macro when:
+
+- there are one or two instances — write the tasks out;
+- only a single task repeats a few times — plain entries are shorter
+  than the template plus its `foreach`;
+- the tasks are merely similar (different flags, hooks or dependencies
+  per instance) — a template full of params is worse than the tasks;
+- you are guessing that more instances will come. Convert later, when
+  they do.
+
+Never rewrite existing plain tasks into a macro, or add a `macros:`
+block to a file that has none, as a side effect of another change —
+propose it and let the user decide.
+
+How they work: a `macros:` top-level block defines parameterized task
+templates; a group entry with `macro:` stamps them out. `{{param}}`
+substitutes in every scalar — task names included — and all field sugar
+works inside templates.
 
 ```yaml
 macros:
@@ -117,18 +145,28 @@ dev:
     with: {svc: flags}       # single expansion (with OR foreach, not both)
 ```
 
-Rules: macros are local to the file that defines them (included files
-expand their own); placeholders must be declared params — checked at
-load even for unused macros; generated names colliding with hand-written
-tasks (or each other) are load errors; generated tasks have no entry of their own — in the TUI, `e` on a
-generated task (or on a macro row in the macros branch of the sidebar)
-opens the macro editor: rename, params, and the task templates, with
-`{{placeholders}}` kept as raw text. Saves are re-parsed and re-expanded
-before the file is touched. Deleting one (ctrl+d) removes the whole `foreach`
-item that generated it, sibling tasks included. In
-the TUI, `N` opens "new from macro": fill the params, then either
-persist (appends a `foreach` item) or run once without touching the
-file.
+Rules:
+
+- Macros are local to the file that defines them; included files expand
+  their own.
+- Placeholders must be declared params — checked at load even for
+  unused macros.
+- Generated names colliding with hand-written tasks (or each other) are
+  load errors.
+- Generated tasks have no entry of their own. To change one, change the
+  macro or its `foreach` item; to make one instance differ, write that
+  instance as a plain task instead of adding a param for it.
+- Do not leave an unused macro behind: when its last instance goes,
+  remove the macro, and drop the `macros:` block once it is empty.
+
+In the TUI, `e` on a generated task (or on a macro row in the macros
+branch of the sidebar) opens the macro editor: rename, params, and the
+task templates, with `{{placeholders}}` kept as raw text. Saves are
+re-parsed and re-expanded before the file is touched. `ctrl+d` on a
+generated task removes the whole `foreach` item that generated it,
+sibling tasks included. `N` opens "new from macro": fill the params,
+then either persist (appends a `foreach` item) or run once without
+touching the file.
 
 ## Linking subprojects
 
@@ -243,6 +281,8 @@ Notes that matter in practice:
   running session.
 
 ## Recipes
+
+These are all plain tasks, as most configs should be.
 
 Dev stack with a database gate:
 

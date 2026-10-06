@@ -161,7 +161,7 @@ the logo, then key columns, then keeps a single line.
 | `W` | toggle line wrapping in copy mode |
 | `c` | copy the task's output (the filtered lines when `/` is active) |
 | mouse drag over logs | character-level selection, editor-style — copied on release |
-| click a `:port` in the banner | open `http://localhost:port` in the browser |
+| click a `↗ localhost:port` badge | open `http://localhost:port` in the browser |
 | `m` | release the mouse to the terminal for native selection (press again to recapture) |
 | select a section header | the right pane shows a live overview of the section's tasks |
 | `r` | run / restart the selected task with a cleared panel — on a section header, start the whole section |
@@ -191,9 +191,12 @@ Per run, a task executes: `before` → `command` (with optional `timeout`) →
 `restart_policy: always` reruns the cycle when it ends; `on-failure` reruns
 only after a failure or timeout.
 
-Ports a task listens on are detected automatically and shown in the pane
-banner before the command (`dev#api ▸ :8080 · go run ./cmd/api`); click
-one to open it in your browser.
+Ports a task listens on are detected automatically and shown as badges
+on the line above its logs, before the command
+(`dev#api ▸ ↗ localhost:8080 · go run ./cmd/api`) — solid blue chips
+where the rest of the line is dim. Click one to open it in your
+browser; while the selected task is listening the banner says so too
+(`<click ↗> open :8080`).
 
 Tasks sharing a `section` (formerly `group`, still accepted) are shown
 under a collapsible `▾ section` header, and
@@ -235,9 +238,15 @@ for configs.
 
 ### Macros
 
-When the same task shape repeats with only a name or path changing,
-define it once as a **macro** and stamp it out per instance. A
-`macros:` block holds parameterized task templates; a group entry with
+Plain tasks are the default, and most configs never need anything
+else. When the same shape of several tasks repeats for three or more
+instances with only a name or path changing — a migrate + run pair per
+service, say — define it once as a **macro** and stamp it out per
+instance. For one or two instances, or a single task that repeats, write
+the tasks out: they stay visible in the file and editable one at a time,
+which a generated task is not.
+
+A `macros:` block holds parameterized task templates; a group entry with
 `macro:` expands them. `{{param}}` substitutes in every scalar — task
 names included — and all the usual field sugar works inside templates:
 
@@ -494,8 +503,9 @@ the next time a session starts or `imake ctl ls` runs. Set
 ## Agent skill
 
 [skills/imake/SKILL.md](skills/imake/SKILL.md) teaches AI coding agents
-to write correct `imake.yml` configs — full syntax, macros,
-include/merge linking, and common recipes. It is a standard
+to write correct `imake.yml` configs — full syntax, when a macro is
+worth it (and when plain tasks are better), include/merge linking, and
+common recipes. It is a standard
 [Agent Skill](https://agentskills.io): one `SKILL.md` that Claude Code,
 Codex, Cursor, GitHub Copilot, Gemini CLI, OpenCode, goose and Amp all
 read. The binary carries its own copy, so installing it needs no
