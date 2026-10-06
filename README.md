@@ -138,9 +138,11 @@ For completion and validation in editors with the YAML language server
 ### Keys & mouse
 
 The banner across the top is k9s-style: what is open on the left, the
-keys that apply right now in columns, the logo on the right. It changes
-with context — attached, searching, on a section header — so the keys
-you need are always in view, and `?` swaps in the full list.
+keys that apply right now in columns beside it, the logo on the right.
+It changes with context — attached, searching, on a section header — so
+the keys you need are always in view, and `?` swaps in the full list.
+It is four rows and sizes itself to the terminal: a narrow one drops
+the logo, then key columns, then keeps a single line.
 
 | Input | Action |
 | --- | --- |
@@ -171,7 +173,7 @@ you need are always in view, and `?` swaps in the full list.
 | `esc` (at rest), `g` | back to the groups table — tasks keep running |
 | `S` | service mode: tasks outlive a closed terminal or a dropped ssh connection (see below) |
 | `Ctrl+Z` | detach: the shell gets its prompt back, everything keeps running — `imake <group>` re-attaches |
-| `?` | expand the banner's key columns to every binding with a description, and back — the panes keep their size, the body just slides down |
+| `?` | swap the banner for a sheet of every binding, and back — the panes keep their size, the body just slides down |
 | `Ctrl+C` | quit (stops all tasks in every group) |
 
 For attached TUIs that need `esc` and `/` themselves (claude, vim,
