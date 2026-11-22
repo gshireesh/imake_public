@@ -28,6 +28,7 @@ dev:
     command: go run ./cmd/main.go      # object task, full lifecycle
     dir: backend                       # cwd, relative to this file
     env: {PORT: "8080"}                # extra environment for every phase
+    exports_env: true                  # this task's KEY=value output is the group's environment
     before: echo starting...           # runs first
     timeout: 10s                       # duration (10s, 500ms, 2m) or bare ms
     on_success: echo ok                # exactly one of these three
@@ -80,6 +81,56 @@ Field notes:
   one. Separately, `imake migrate --check` tells you whether the file
   matches the canonical *format*; `imake migrate` fixes that in place
   without changing behavior (it verifies every task before writing).
+
+## Logs on disk
+
+By default imake keeps only the last 5,000 lines of each task in memory
+and clears them on every run. A top-level `settings:` block makes it
+write every task's full output to a file as well:
+
+```yaml
+settings:
+  logs: .imake/logs    # dir, relative to this file -> <logs>/<group>/<task>.log
+  history: false       # false: file starts empty each run; default true appends
+```
+
+- The files are plain text (no colour codes), one per task, each run
+  under a dated `── group#task · run N · date ──` header.
+- **When a config has `settings.logs`, read the file** instead of
+  `imake ctl logs` when you need more than the last few thousand lines,
+  or output from before a restart: `grep -n ERROR .imake/logs/dev/api.log`.
+  `imake ctl status --json` gives each task's `log` path.
+- `history: false` when only the current run matters (dev servers,
+  watchers); leave it out to keep earlier runs for comparison.
+- Files rotate at 10 MB to `<task>.log.1`.
+- `settings` is a reserved word like `include`, `merge` and `macros`: it
+  cannot be a group name, and it accepts only `logs` and `history`.
+
+## Environment
+
+Tasks start from the environment of the terminal that last attached to
+the session, with the task's `env:` on top. When the environment comes
+from a file or a tool, give the group one **env task** — a task with
+`exports_env: true`. It never runs on its own: it runs before every
+other task's start, in its own `dir` with its own `env:`, and its
+`KEY=value` output is applied between the terminal's environment and
+each task's `env:`:
+
+```yaml
+dev:
+  env:
+    command: direnv exec . env          # .envrc via direnv
+    exports_env: true
+  # other commands that work: mise env · sh -c 'set -a; . ./.env; env' · cat .env
+  api: go run ./cmd/api
+```
+
+Non-assignment lines are ignored; a failing export fails the task
+before it starts; a group may have only one env task. Prefer an env
+task over `cd x && source ...` inside every `command`, and do not add
+one unless the project actually loads its environment that way.
+- Add `settings.logs` when the user asks for log files or persistent
+  logs — not by default — and put the directory in `.gitignore`.
 
 ## Macros
 
@@ -221,13 +272,18 @@ imake ctl <cmd>    drive a RUNNING imake from this shell (see below)
 ## Driving a running imake
 
 When someone already has `imake <group>` open in another terminal, do
-not start a second one — attach to theirs. `imake ctl` talks to the
+not start a second one, and never run `imake` or `imake <group>`
+yourself in that directory: attaching takes the terminal away from the
+person watching (imake refuses when your shell has no terminal of its
+own, but do not rely on that). Drive theirs instead. `imake ctl` talks to the
 running TUI over loopback and finds the session by working directory,
 so inside the project no session id is needed.
 
 ```
 imake ctl status              every open task: state, phase, pid, ports
-imake ctl logs <task> -n 200  that task's output, ANSI stripped
+                              (--json adds the log file path, if any)
+imake ctl logs <task> -n 200  that task's output, ANSI stripped (the last
+                              5,000 lines at most; the log file has it all)
 imake ctl logs <task> -f      follow it live
 imake ctl restart <task>      exactly what pressing r does
 imake ctl start|stop <task>   start a stopped/manual task, or stop one

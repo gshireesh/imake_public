@@ -103,6 +103,10 @@
               "description": "extra environment for every phase",
               "type": "object"
             },
+            "exports_env": {
+              "description": "runs before every other task's start; its KEY=value output is their environment",
+              "type": "boolean"
+            },
             "group": {
               "deprecated": true,
               "deprecationMessage": "deprecated: use section - run imake migrate",
@@ -345,6 +349,22 @@
         ]
       },
       "description": "fold subproject groups into this file's groups: group -\u003e [{path, group, section}]",
+      "type": "object"
+    },
+    "settings": {
+      "additionalProperties": false,
+      "description": "session behaviour for every task this file runs",
+      "properties": {
+        "history": {
+          "default": true,
+          "description": "true (default): runs append to the log file under a dated header. false: the file starts empty every time the task runs",
+          "type": "boolean"
+        },
+        "logs": {
+          "description": "directory each task's full output is written to as plain text: \u003clogs\u003e/\u003cgroup\u003e/\u003ctask\u003e.log (relative to this file). The / log search reads it, so it finds lines the pane no longer holds",
+          "type": "string"
+        }
+      },
       "type": "object"
     }
   },

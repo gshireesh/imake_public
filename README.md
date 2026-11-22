@@ -121,6 +121,7 @@ bottom returns to the live screen.
 | `manual` | bool | start only when you press r · deprecated alias `triggers` |
 | `prompt` | bool or string | are-you-sure before every start: true, or the message · deprecated alias `prompt_description` |
 | `passthrough` | bool | attached esc and / go to the task; ctrl+t reaches imake · deprecated alias `ctrl_modifier` |
+| `exports_env` | bool | runs before every other task's start; its KEY=value output is their environment |
 | `depends_on` | list | start after these tasks succeed |
 | `section` | string | sidebar sub-heading; slashes nest (infra/db) · deprecated alias `group` |
 <!-- fields:end -->
@@ -153,7 +154,7 @@ the logo, then key columns, then keeps a single line.
 | `N` | new from macro — fill the params, persist to `imake.yml` or run once |
 | click task row | select task (click a group header to toggle it) |
 | `Enter`, `i`, click log panel | attach — keys go to the task's shell |
-| `/` | search: filters the task list from the sidebar, or log lines while attached |
+| `/` | search: filters the task list from the sidebar, or log lines while attached — from the task's log file when [`settings.logs`](#logs-on-disk) is set, so it reaches output the pane no longer holds |
 | `Esc` | clear the active filter, then detach / leave fullscreen |
 | `Esc`, `Ctrl+\` | detach |
 | wheel over logs, `w`/`s`, `U`/`D`, `a`/`d` | scroll / page / top / bottom (game keys) |
@@ -233,8 +234,8 @@ manual included. Lifecycle hooks other than `command` are ignored in
 plain mode.
 
 See [examples/simple](examples/simple), [examples/lifecycle](examples/lifecycle),
-[examples/manual](examples/manual) and [examples/grouped](examples/grouped)
-for configs.
+[examples/manual](examples/manual), [examples/grouped](examples/grouped)
+and [examples/logs](examples/logs) for configs.
 
 ### Macros
 
@@ -295,6 +296,82 @@ marked `(once)` in the sidebar, without touching the file. Ephemeral
 tasks survive `R` reloads; stop one and press `q` again to clear it.
 
 See [examples/macros](examples/macros).
+
+### Logs on disk
+
+A pane keeps the last 5,000 lines a task printed, in memory, and starts
+clean on every run — enough to watch a task, not a record of it. While
+you scroll, the line above the logs says how much it holds
+(`copy mode · 1,234/5,000 lines`), and the top of the scrollback says so
+once older lines have been dropped. To keep everything, give imake a
+directory in a `settings:` block:
+
+```yaml
+settings:
+  logs: .imake/logs    # relative to this file; absolute and ~/ paths work too
+  history: false       # optional, see below
+
+dev:
+  api: go run ./cmd/api
+```
+
+Every task then writes its full output to
+`.imake/logs/<group>/<task>.log` as plain text — colours and cursor
+movement stripped, a progress bar reduced to its last frame, a
+full-screen program's screen left out — so `less`, `grep`, `tail -f` and
+coding agents can read it. Each run opens with a dated header line.
+
+- **`history`** decides what a new run does to the file. `true` (the
+  default) appends, so the file is a history of runs; `false` starts it
+  empty every time the task runs — on `r`, on an automatic restart, on
+  the next `imake dev` — so it always holds exactly the current run.
+- **`/` searches the file.** With a log file, filtering a task's logs
+  reads the file instead of the pane, so it finds lines the pane dropped
+  long ago and, with history on, lines from earlier runs. The pane says
+  where the matches came from (`12 matches in .imake/logs/dev/api.log`)
+  and shows the most recent 5,000.
+- A file is rotated at 10 MB: it becomes `api.log.1` (replacing the
+  previous one) and a new one starts. `/` searches both.
+- Linked subprojects log where the file that links them says, unless
+  they set `settings.logs` themselves. Plain mode (`-p`) writes the same
+  files. `imake ctl status --json` reports each task's `log` path.
+
+You will usually want the directory in `.gitignore`. See
+[examples/logs](examples/logs).
+
+### Environment
+
+Every run starts from the environment of the terminal that last
+attached — not the one the background imake was started from — so
+whatever your shell set up (direnv, nvm, exported variables) is what a
+restarted task gets, and re-attaching after changing it is enough.
+
+For environments that come from a file or a tool, give the group an
+**env task**: a task with `exports_env: true`. It never runs on its own;
+it runs before every other task's start — in its own `dir`, with its own
+`env:` — and its `KEY=value` output becomes their environment. Lines
+that are not assignments are ignored, so the usual tools work as they
+are:
+
+```yaml
+dev:
+  env:
+    command: direnv exec . env            # or: mise env · cat .env · a Vault fetch
+    exports_env: true
+  api: go run ./cmd/api
+  worker:
+    command: ./worker
+    env: {QUEUE_WORKERS: "4"}             # env: still wins
+```
+
+The env task's pane is the record: one rule per task it served
+(`── for api ▸ direnv exec . env ──`), what the command said, and how
+many variables it set; its ✓/✗ is the last export. The served task's
+pane gets one line (`── env from env ▸ 12 variables ──`). If the export
+fails, the run does not start and the task is marked failed with the
+reason. A group may have one env task; `r` on it runs it alone to show
+its output. Precedence, lowest first: the terminal's environment, the
+env task, the task's `env:`. See [examples/env](examples/env).
 
 ### Linking subprojects
 
@@ -447,9 +524,20 @@ imake ctl quit      # stop every task and end the session
 `imake -s dev` against a session that is already running flips it to
 service mode and opens `dev` without taking your screen, so an agent
 can start a group it needs without a terminal at all. Attaching from a
-second terminal takes the session over; the first one is told so and
-returns to its shell. `IMAKE_NO_SERVICE=1` runs the TUI in-process,
-the old way (always the case on Windows).
+second terminal takes the session over; the first one is told so — and
+by whom (`imake pid 4242, started by zsh`) — and returns to its shell.
+A shell with no terminal of its own (a script, an agent) is refused
+instead of taking over a session someone is watching.
+`IMAKE_NO_SERVICE=1` runs the TUI in-process, the old way (always the
+case on Windows).
+
+A session never lets a terminal go without saying why. The shell that
+lost it prints the reason, the next terminal to attach shows it in the
+banner (`last terminal let go 12:43:07 — another terminal attached
+(…)`), and the session's log under the cache directory
+(`imake/sessions/<pid>.log`) keeps every one. If the display itself
+fails while the terminal is still there, it is restarted in place
+rather than dropping you to the shell.
 
 Whether in-process or in the background, imake keeps a tiny watchdog
 (`imake __reaper`) holding a pipe to it. If imake ever dies without
